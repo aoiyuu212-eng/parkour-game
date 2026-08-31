@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Neon Runner</title>
+<style>
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#090b18;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;touch-action:none}canvas{display:block;width:100%;height:100%}#hud{position:fixed;inset:0;pointer-events:none;color:#fff;text-shadow:0 2px 8px #000}#score{position:absolute;top:18px;left:20px;font-size:22px;font-weight:800}#best{position:absolute;top:50px;left:20px;font-size:13px;opacity:.75}.tip{position:absolute;top:18px;right:20px;font-size:13px;opacity:.7;text-align:right}.overlay{position:absolute;inset:0;display:grid;place-items:center;background:linear-gradient(#080a1877,#080a18cc);pointer-events:auto}.panel{width:min(90vw,420px);padding:34px 28px;border:1px solid #ffffff22;border-radius:24px;background:#11152beF;box-shadow:0 20px 80px #0008;text-align:center}.panel h1{margin:0 0 8px;font-size:42px;letter-spacing:3px}.panel p{margin:8px 0 22px;color:#b8bfdc;line-height:1.6}.btn{border:0;border-radius:999px;padding:14px 28px;font-size:17px;font-weight:800;color:#08101c;background:#7df9ff;box-shadow:0 0 28px #45e9ff66;cursor:pointer}.hidden{display:none}.controls{position:absolute;bottom:22px;left:0;right:0;display:flex;justify-content:center;gap:16px;pointer-events:auto}.control{width:74px;height:58px;border:1px solid #ffffff2c;border-radius:18px;background:#ffffff12;color:#fff;font-size:25px;backdrop-filter:blur(8px)}
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="hud"><div id="score">0 m</div><div id="best">BEST 0 m</div><div class="tip">SPACE / ↑ 跳跃　← → 移动</div><div id="start" class="overlay"><div class="panel"><h1>NEON RUNNER</h1><p>奔跑、跳跃、躲开障碍。<br>速度会越来越快，看看你能跑多远！</p><button class="btn" id="startBtn">开始游戏</button></div></div><div id="over" class="overlay hidden"><div class="panel"><h1>GAME OVER</h1><p id="result">你跑了 0 米</p><button class="btn" id="restartBtn">再来一次</button></div></div><div class="controls"><button class="control" id="left">←</button><button class="control" id="jump">↑</button><button class="control" id="right">→</button></div></div>
+<script>
+const c=document.getElementById('game'),ctx=c.getContext('2d');let W,H,dpr,playing=false,last=0,t=0,dist=0,best=+localStorage.neonBest||0,speed=320,spawn=0,scoreEl=document.getElementById('score'),bestEl=document.getElementById('best');
+const p={x:0,y:0,w:32,h:48,vy:0,lane:0,target:0,ground:0};let obstacles=[],coins=[],particles=[];
+function resize(){dpr=Math.min(devicePixelRatio||1,2);W=innerWidth;H=innerHeight;c.width=W*dpr;c.height=H*dpr;ctx.setTransform(dpr,0,0,dpr,0,0);p.ground=H*.78;p.y=p.ground-p.h}addEventListener('resize',resize);resize();bestEl.textContent='BEST '+best+' m';
+function reset(){playing=true;t=0;dist=0;speed=320;spawn=.6;obstacles=[];coins=[];particles=[];p.lane=0;p.target=0;p.x=W/2-p.w/2;p.y=p.ground-p.h;p.vy=0;document.getElementById('start').classList.add('hidden');document.getElementById('over').classList.add('hidden')}
+function laneX(l){return W/2+l*75-p.w/2}
+function jump(){if(!playing)return;if(p.y>=p.ground-p.h-2){p.vy=-720;burst(p.x+p.w/2,p.ground,'#7df9ff',8)}}
+function move(dir){if(!playing)return;p.target=Math.max(-1,Math.min(1,p.target+dir))}
+function burst(x,y,color,n){for(let i=0;i<n;i++)particles.push({x,y,vx:(Math.random()-.5)*180,vy:(Math.random()-.8)*180,life:.45,color})}
+function spawnItem(){const lane=Math.floor(Math.random()*3)-1;if(Math.random()<.62){obstacles.push({lane,y:-70,w:48,h:48,type:Math.random()<.35?'barrel':'block'})}else coins.push({lane,y:-30,r:10});spawn=Math.max(.42,1.05-(speed-320)/900)*(0.65+Math.random()*.6)}
+function update(dt){t+=dt;dist+=speed*dt/10;speed+=dt*8;spawn-=dt;if(spawn<=0)spawnItem();p.x+=(laneX(p.target)-p.x)*Math.min(1,dt*12);p.vy+=1750*dt;p.y+=p.vy*dt;if(p.y>p.ground-p.h){p.y=p.ground-p.h;p.vy=0}
+for(const o of obstacles)o.y+=speed*dt;for(const q of coins)q.y+=speed*dt;obstacles=obstacles.filter(o=>o.y<H+100);coins=coins.filter(q=>q.y<H+50);
+for(let i=obstacles.length-1;i>=0;i--){const o=obstacles[i],x=laneX(o.lane)+p.w/2-o.w/2;if(x<p.x+p.w&&x+o.w>p.x&&o.y<p.y+p.h&&o.y+o.h>p.y+8){gameOver();return}}
+for(let i=coins.length-1;i>=0;i--){const q=coins[i],x=W/2+q.lane*75;if(Math.hypot(x-(p.x+p.w/2),q.y-(p.y+p.h/2))<28){dist+=25;burst(x,q.y,'#ffd65a',12);coins.splice(i,1)}}
+for(const a of particles){a.x+=a.vx*dt;a.y+=a.vy*dt;a.vy+=300*dt;a.life-=dt}particles=particles.filter(a=>a.life>0);scoreEl.textContent=Math.floor(dist)+' m'}
+function gameOver(){playing=false;const s=Math.floor(dist);if(s>best){best=s;localStorage.neonBest=best;bestEl.textContent='BEST '+best+' m'}document.getElementById('result').textContent='你跑了 '+s+' 米';document.getElementById('over').classList.remove('hidden');burst(p.x+p.w/2,p.y+p.h/2,'#ff6688',25)}
+function draw(){ctx.clearRect(0,0,W,H);const g=ctx.createLinearGradient(0,0,0,H);g.addColorStop(0,'#0a0d24');g.addColorStop(1,'#151b35');ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+// stars
+ctx.globalAlpha=.5;for(let i=0;i<45;i++){let x=(i*97+t*12)%W,y=(i*53)% (H*.68);ctx.fillStyle='#fff';ctx.fillRect(x,y,1.5,1.5)}ctx.globalAlpha=1;
+// distant city
+ctx.fillStyle='#0d1125';for(let i=0;i<18;i++){let bw=30+(i*17)%55,bh=40+(i*31)%(H*.3);let x=i*70-(t*speed*.05%70);ctx.fillRect(x,H*.78-bh,bw,bh)}
+// road
+ctx.fillStyle='#080b18';ctx.beginPath();ctx.moveTo(W*.32,H);ctx.lineTo(W*.42,H*.55);ctx.lineTo(W*.58,H*.55);ctx.lineTo(W*.68,H);ctx.fill();ctx.strokeStyle='#273052';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(W*.32,H);ctx.lineTo(W*.42,H*.55);ctx.moveTo(W*.68,H);ctx.lineTo(W*.58,H*.55);ctx.stroke();
+for(let l of [-.5,.5]){ctx.strokeStyle='#202747';ctx.setLineDash([18,22]);ctx.lineDashOffset=-(t*speed*.08);ctx.beginPath();ctx.moveTo(W/2+l*37,H);ctx.lineTo(W/2+l*19,H*.55);ctx.stroke()}ctx.setLineDash([]);
+// ground glow
+ctx.strokeStyle='#5fefff66';ctx.beginPath();ctx.moveTo(0,H*.78);ctx.lineTo(W,H*.78);ctx.stroke();
+for(const q of coins){const x=W/2+q.lane*75;ctx.shadowBlur=18;ctx.shadowColor='#ffd65a';ctx.fillStyle='#ffd65a';ctx.beginPath();ctx.arc(x,q.y,q.r,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0;ctx.fillStyle='#fff3a8';ctx.beginPath();ctx.arc(x-3,q.y-3,3,0,Math.PI*2);ctx.fill()}
+for(const o of obstacles){const x=laneX(o.lane)+p.w/2-o.w/2;ctx.fillStyle=o.type==='barrel'?'#ff5577':'#a34cff';ctx.shadowBlur=16;ctx.shadowColor=ctx.fillStyle;ctx.fillRect(x,o.y,o.w,o.h);ctx.shadowBlur=0;ctx.fillStyle='#fff5';ctx.fillRect(x+7,o.y+7,o.w-14,6)}
+// player shadow
+ctx.fillStyle='#0008';ctx.beginPath();ctx.ellipse(p.x+p.w/2,p.ground+3,25,7,0,0,Math.PI*2);ctx.fill();
+ctx.shadowBlur=20;ctx.shadowColor='#58efff';ctx.fillStyle='#62efff';ctx.fillRect(p.x,p.y,p.w,p.h);ctx.shadowBlur=0;ctx.fillStyle='#08101c';ctx.fillRect(p.x+7,p.y+10,18,12);ctx.fillStyle='#fff';ctx.fillRect(p.x+10,p.y+13,5,5);ctx.fillStyle='#fff';ctx.fillRect(p.x+20,p.y+13,5,5);ctx.fillStyle='#1d8da0';ctx.fillRect(p.x+5,p.y+p.h-8,22,6);
+for(const a of particles){ctx.globalAlpha=Math.max(0,a.life*2);ctx.fillStyle=a.color;ctx.fillRect(a.x,a.y,4,4)}ctx.globalAlpha=1}
+function loop(now){const dt=Math.min(.032,(now-last)/1000||0);last=now;if(playing)update(dt);draw();requestAnimationFrame(loop)}requestAnimationFrame(loop);
+document.getElementById('startBtn').onclick=reset;document.getElementById('restartBtn').onclick=reset;document.getElementById('jump').onpointerdown=e=>{e.preventDefault();jump()};document.getElementById('left').onpointerdown=e=>{e.preventDefault();move(-1)};document.getElementById('right').onpointerdown=e=>{e.preventDefault();move(1)};
+addEventListener('keydown',e=>{if(['ArrowUp','Space'].includes(e.code)){e.preventDefault();jump()}if(e.code==='ArrowLeft'||e.code==='KeyA')move(-1);if(e.code==='ArrowRight'||e.code==='KeyD')move(1);if(e.code==='Enter'&&!playing)reset()});
+</script></body></html>
